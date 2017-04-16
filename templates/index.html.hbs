@@ -1,0 +1,45 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN"
+  "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head>
+  <meta http-equiv="content-type" content="text/xml; charset=utf-8" />
+  <meta http-equiv="content-language" content="en-ca" />
+  <link rel="stylesheet" href="/style.css" type="text/css" />
+  <title>{{ title }}</title>
+</head>
+<body>
+  <div id="content">
+    <div id="title">{{ title }}</div>
+    <div id="main">
+<p><a href="https://petertodd.org/2016/opentimestamps-announcement">OpenTimestamps</a> is a timestamping
+service created by Peter Todd in 2016. He operates two servers providing the service and has written
+<a href="https://github.com/opentimestamps/opentimestamps-client/tree/opentimestamps-client-v0.2.0">a
+Python tool and library</a> for creating and verifying timestamps on arbitrary files.</p>
+<p>Using these tools, users can create timestamps on arbitrary files, which will appear to
+them as small binary files ending in the extension <tt>.ots</tt>. These files describe how
+a given file is committed to by some <a href="https://en.wikipedia.org/wiki/Merkle_tree">Merkle root</a>,
+which in turn is attested to have existed at some time.</p>
+<p>Initially the attestation consists only of the URI of some timestamping server, which
+is accumulating commitments from many sources into a single Merkle root. Eventually the
+server will publish a Bitcoin transaction which commits to this root, producing a Merkle
+path from every committed document to some Bitcoin block's header. Users can obtain the
+full Merkle path by querying the server that produced the transaction. Anyone in possession
+of this path may verify the timestamp by querying the chain of Bitcoin block headers; the
+original server is no longer necessary.
+</p>
+<p>This site provides a human-readable view of the contents of <tt>.ots</tt> files so that
+users can verify for themselves that their timestamps are legitimately committed to by the
+Bitcoin chain. It is for fun and education.</p>
+<p>To view the contents of a Timestamp file, upload it here:</p>
+<form action="/view" method="post" enctype="multipart/form-data">
+<div id="upload_box">
+  <input name="file" type="file" size="40" accept=".ots" /><br />
+  <input type="submit" value="Upload" id="upload_btn" />
+</div>
+</form>
+
+    </div>
+    <div id="copyright">Site design by Andrew Poelstra, 2017</div>
+  </div>
+</body
+</html>

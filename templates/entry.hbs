@@ -1,0 +1,26 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN"
+  "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head>
+  <meta http-equiv="content-type" content="text/xml; charset=utf-8" />
+  <meta http-equiv="content-language" content="en-ca" />
+  <link rel="stylesheet" href="/style.css" type="text/css" />
+  <title>{{ title }}</title>
+</head>
+<body>
+  <div id="content">
+    <div id="title">{{{ title }}}</div>
+    <div id="main">
+<p>Document digest ({{digest_type}}): {{ start_hash }}</p>
+<p><a href="/">Return to upload page</a></p>
+<table id="trace_table">
+<tr class="step_parse"><td class="output"><tt>{{start_hash}}</tt></td><td class="reason">{{digest_type}}(Document)</td></tr>
+{{#each steps}}
+<tr class="{{this.class}}"><td class="output"><div>{{this.prefix}}{{{this.result}}}</div></td><td class="reason">{{this.reason}}</td></tr>
+{{/each}}
+</table>
+    </div>
+    <div id="copyright">Site design by Andrew Poelstra, 2017</div>
+  </div>
+</body
+</html>

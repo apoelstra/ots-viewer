@@ -1,0 +1,110 @@
+
+BODY {
+    background-image: url("/img/bg.gif");
+    font-family: serif;
+    font-size: 10pt;
+    line-height: 1.5
+}
+
+TT {
+    border: 1px solid black;
+    background-color: #FFD;
+    padding: 2px;
+}
+
+#content {
+  margin-left:  auto;
+  margin-right: auto;
+
+  width:  75%;
+  min-width: 580px;
+  max-width: 1000px;
+  border: 1px solid black;
+
+  padding: 1em;
+  background-color: white;
+
+  text-align: left;
+}
+
+#title {
+    font-family: sans-serif;
+    font-size: 24pt;
+    text-align: center;
+    border-bottom: 1px dashed gray;
+}
+
+#main {
+    padding: 2ex 0;
+}
+
+#error_box {
+    border: 2px solid red;
+    margin: 1ex;
+    padding: 3ex;
+    background-color: #FFD;
+}
+
+#upload_box {
+    border: 1px solid black;
+    margin-left:  auto;
+    margin-right: auto;
+    padding: 3ex;
+    width:  50%;
+    background-color: #FFD;
+    text-align: center;
+}
+
+#upload_btn {
+    margin-top: 2ex;
+    padding: 1ex;
+    font-size: 16pt;
+}
+
+#copyright {
+    text-align: right;
+    color: #ccc;
+    border-top: 1px dashed gray;
+}
+
+TABLE {
+    table-layout: fixed;
+    border-collapse: collapse;
+    width: 100%;
+    border: 1px solid black;
+}
+
+TD {
+    padding: 10px 5px;
+    border-spacing: 0;
+    border: 1px solid black;
+    border-width: 1px 0;
+    white-space: nowrap;
+}
+
+TD DIV {
+    overflow-x: scroll;
+    overflow-y: hidden;
+}
+
+TD.output {
+    width: auto;
+}
+
+TD.reason {
+    width: 12em;
+    text-align: center;
+}
+
+TR.step_attest {
+    background-color: #CFC;
+}
+
+TR.step_parse {
+    background-color: #FDF;
+}
+
+TR.step_fork {
+    background-color: #DEF;
+}
+

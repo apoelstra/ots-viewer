@@ -1,0 +1,186 @@
+// OpenTimestamps Viewer
+// Written in 2017 by
+//   Andrew Poelstra <rust-ots@wpsoftware.net>
+//
+// To the extent possible under law, the author(s) have dedicated all
+// copyright and related and neighboring rights to this software to
+// the public domain worldwide. This software is distributed without
+// any warranty.
+//
+// You should have received a copy of the CC0 Public Domain Dedication
+// along with this software.
+// If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
+//
+
+//! # OpenTimestamps Viewer
+//!
+//! HTTP server which provides a pretty view of .ots files
+//!
+
+// Coding conventions
+#![deny(non_upper_case_globals)]
+#![deny(non_camel_case_types)]
+#![deny(non_snake_case)]
+#![deny(unused_mut)]
+
+#![feature(plugin)]
+#![plugin(rocket_codegen)]
+
+extern crate bitcoin;
+extern crate multipart;
+extern crate ots;
+extern crate rocket_contrib;
+extern crate rocket;
+extern crate serde;
+#[macro_use] extern crate serde_derive;
+
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
+use bitcoin::blockdata::transaction::Transaction;
+use bitcoin::network::serialize::{deserialize, BitcoinHash};
+use ots::attestation::Attestation;
+use ots::timestamp::{Step, StepData};
+use ots::op::Op;
+use ots::hex::Hexed;
+use rocket::response::NamedFile;
+use rocket_contrib::Template;
+
+pub mod multipart_stream;
+
+#[derive(Debug, Serialize)]
+struct DisplayedStep {
+    prefix: String,
+    result: String,
+    reason: String,
+    class: &'static str
+}
+
+#[derive(Debug, Serialize)]
+struct DisplayedTimestamp {
+    title: String,
+    start_hash: String,
+    digest_type: String,
+    steps: Vec<DisplayedStep>
+}
+
+fn render_steps(step: &Step, vec: &mut Vec<DisplayedStep>, prev_data: &[u8], prefix: String) {
+    match step.data {
+        StepData::Fork => {
+            vec.push(DisplayedStep {
+                prefix: prefix.clone(),
+                result: format!("Fork into <b>{}</b> paths", step.next.len()),
+                reason: "Fork".to_owned(),
+                class: "step_fork"
+            });
+            for (n, next) in step.next.iter().enumerate() {
+                let new_prefix = if prefix.is_empty() {
+                    format!("{} ", n + 1)
+                } else {
+                    format!("{}- {} ", prefix, n + 1)
+                };
+                render_steps(next, vec, prev_data, new_prefix);
+            }
+        }
+        StepData::Op(ref op) => {
+            match *op {
+                Op::Sha1 | Op::Sha256 | Op::Ripemd160 |
+                Op::Reverse | Op::Hexlify => {
+                    vec.push(DisplayedStep {
+                        prefix: prefix.clone(),
+                        result: format!("<tt>{}</tt>", Hexed(&step.output)),
+                        reason: format!("{}", op),
+                        class: "step_op"
+                    });
+                }
+                Op::Append(ref newdata) => {
+                    vec.push(DisplayedStep {
+                        prefix: prefix.clone(),
+                        result: format!("<tt>{}<font color=\"green\">{}</font></tt>", Hexed(prev_data), Hexed(newdata)),
+                        reason: format!("Append({}...)", Hexed(&newdata[0..3])),
+                        class: "step_op"
+                    });
+                    // Notice valid bitcoin transactions
+                    if let Ok(tx) = deserialize::<Transaction>(&step.output) {
+                        vec.push(DisplayedStep {
+                            prefix: prefix.clone(),
+                            result: format!("Bitcoin transaction <b>{}</b>", tx.bitcoin_hash()),
+                            reason: "(Parse TX)".to_owned(),
+                            class: "step_parse"
+                        });
+                    }
+                }
+                Op::Prepend(ref newdata) => {
+                    vec.push(DisplayedStep {
+                        prefix: prefix.clone(),
+                        result: format!("<tt><font color=\"green\">{}</font>{}</tt>", Hexed(newdata), Hexed(prev_data)),
+                        reason: format!("Prepend({}...)", Hexed(&newdata[0..3])),
+                        class: "step_op"
+                    });
+                }
+            };
+            render_steps(&step.next[0], vec, &step.output, prefix);
+        }
+        StepData::Attestation(ref attest) => {
+            let result = match *attest {
+                Attestation::Unknown { ref tag, ref data } => format!("Unknown attestation <b>{}</b>/<b>{}</b>", Hexed(tag), Hexed(data)),
+                Attestation::Pending { ref uri } => format!("Pending attestation: server <b>{}</b>", uri),
+                Attestation::Bitcoin { height } => {
+                    let root: Vec<u8> = prev_data.iter().rev().map(|x| *x).collect();
+                    format!("Merkle root <b>{}</b> of Bitcoin block <b>{}</b>", Hexed(&root), height)
+                }
+            };
+            vec.push(DisplayedStep {
+                prefix: prefix.clone(),
+                result: result,
+                reason: "Attestation".to_owned(),
+                class: "step_attest"
+            });
+        }
+    }
+}
+
+// Upload handler
+#[post("/view", data="<ots>")]
+fn upload(ots: multipart_stream::MultipartStream) -> Template {
+    match ots::DetachedTimestampFile::from_reader(ots.stream) {
+        Ok(dtf) => {
+            let mut steps = vec![];
+            render_steps(&dtf.timestamp.first_step, &mut steps, &dtf.timestamp.start_digest, "".to_string());
+            let display = DisplayedTimestamp {
+                title: format!("Timestamp of <tt>{:?}</tt>", Hexed(&dtf.timestamp.start_digest[0..6])),
+                start_hash: format!("{}", Hexed(&dtf.timestamp.start_digest)),
+                digest_type: format!("{}", dtf.digest_type),
+                steps: steps
+            };
+            Template::render("entry", &display)
+        }
+        Err(e) => {
+            let mut context = HashMap::new();
+            context.insert("title", "Upload Page".to_owned());
+            context.insert("error", format!("{}", e));
+            Template::render("error", &context)
+        }
+    }
+}
+
+// Generic static file handler
+#[get("/<file..>")]
+fn files(file: PathBuf) -> Option<NamedFile> {
+    NamedFile::open(Path::new("static/").join(file)).ok()
+}
+
+// Index page
+#[get("/")]
+fn index() -> Template {
+    let mut context = HashMap::new();
+    context.insert("title", "OpenTimestamps Viewer");
+    Template::render("index", &context)
+}
+
+fn main() {
+    rocket::ignite()
+        .mount("/", routes![index, files, upload])
+        .launch();
+}
+
