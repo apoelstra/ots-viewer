@@ -29,14 +29,14 @@
 extern crate bitcoin;
 extern crate crypto;
 extern crate multipart;
-extern crate ots;
+extern crate opentimestamps as ots;
 extern crate rocket_contrib;
 extern crate rocket;
 extern crate serde;
 #[macro_use] extern crate serde_derive;
 
 use std::collections::HashMap;
-use std::{fs, time};
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use bitcoin::blockdata::transaction::Transaction;
@@ -47,7 +47,7 @@ use ots::attestation::Attestation;
 use ots::timestamp::{Step, StepData};
 use ots::op::Op;
 use ots::hex::Hexed;
-use rocket::response::{Redirect, NamedFile, Responder};
+use rocket::response::{Redirect, NamedFile};
 use rocket_contrib::Template;
 
 pub mod multipart_stream;
