@@ -36,6 +36,7 @@ extern crate serde;
 #[macro_use] extern crate serde_derive;
 
 use std::collections::HashMap;
+use std::borrow::Cow;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -47,10 +48,19 @@ use ots::attestation::Attestation;
 use ots::timestamp::{Step, StepData};
 use ots::op::Op;
 use ots::hex::Hexed;
+use rocket::http::ascii::UncasedAscii;
+use rocket::http::ContentType;
+use rocket::response::content;
 use rocket::response::{Redirect, NamedFile};
 use rocket_contrib::Template;
 
 pub mod multipart_stream;
+
+const OCTET_STREAM: ContentType = ContentType {
+    ttype: UncasedAscii { string: Cow::Borrowed("application") },
+    subtype: UncasedAscii { string: Cow::Borrowed("octet-stream") },
+    params: None
+};
 
 #[derive(Debug, Serialize)]
 struct DisplayedStep {
@@ -62,6 +72,7 @@ struct DisplayedStep {
 
 #[derive(Debug, Serialize)]
 struct DisplayedTimestamp {
+    id: String,
     title: String,
     start_hash: String,
     digest_type: String,
@@ -154,6 +165,7 @@ fn view(file: PathBuf) -> Template {
                     let mut steps = vec![];
                     render_steps(&dtf.timestamp.first_step, &mut steps, &dtf.timestamp.start_digest, "".to_string());
                     let display = DisplayedTimestamp {
+                        id: doc_id(&dtf),
                         title: format!("Timestamp of <tt>{:?}</tt>", Hexed(&dtf.timestamp.start_digest[0..6])),
                         start_hash: format!("{}", Hexed(&dtf.timestamp.start_digest)),
                         digest_type: format!("{}", dtf.digest_type),
@@ -177,6 +189,17 @@ fn view(file: PathBuf) -> Template {
         }
     }
 }
+
+// Download
+#[get("/download/<file..>")]
+fn download(file: PathBuf) -> Option<content::Content<NamedFile>> {
+    if let Ok(nf) = NamedFile::open(Path::new("cache/").join(file)) {
+        Some(content::Content(OCTET_STREAM, nf))
+    } else {
+        None
+    }
+}
+
 
 fn doc_id_hash_recurse(step: &Step, hasher: &mut Sha256) {
     hasher.input(&step.output);
@@ -240,7 +263,7 @@ fn index() -> Template {
 
 fn main() {
     rocket::ignite()
-        .mount("/", routes![index, files, upload, view])
+        .mount("/", routes![index, files, upload, download, view])
         .launch();
 }
 
