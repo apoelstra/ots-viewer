@@ -27,6 +27,7 @@
 #![plugin(rocket_codegen)]
 
 extern crate bitcoin;
+extern crate crypto;
 extern crate multipart;
 extern crate ots;
 extern crate rocket_contrib;
@@ -35,15 +36,18 @@ extern crate serde;
 #[macro_use] extern crate serde_derive;
 
 use std::collections::HashMap;
+use std::{fs, time};
 use std::path::{Path, PathBuf};
 
 use bitcoin::blockdata::transaction::Transaction;
 use bitcoin::network::serialize::{deserialize, BitcoinHash};
+use crypto::digest::Digest;
+use crypto::sha2::Sha256;
 use ots::attestation::Attestation;
 use ots::timestamp::{Step, StepData};
 use ots::op::Op;
 use ots::hex::Hexed;
-use rocket::response::NamedFile;
+use rocket::response::{Redirect, NamedFile, Responder};
 use rocket_contrib::Template;
 
 pub mod multipart_stream;
@@ -140,32 +144,88 @@ fn render_steps(step: &Step, vec: &mut Vec<DisplayedStep>, prev_data: &[u8], pre
     }
 }
 
-// Upload handler
-#[post("/view", data="<ots>")]
-fn upload(ots: multipart_stream::MultipartStream) -> Template {
-    match ots::DetachedTimestampFile::from_reader(ots.stream) {
-        Ok(dtf) => {
-            let mut steps = vec![];
-            render_steps(&dtf.timestamp.first_step, &mut steps, &dtf.timestamp.start_digest, "".to_string());
-            let display = DisplayedTimestamp {
-                title: format!("Timestamp of <tt>{:?}</tt>", Hexed(&dtf.timestamp.start_digest[0..6])),
-                start_hash: format!("{}", Hexed(&dtf.timestamp.start_digest)),
-                digest_type: format!("{}", dtf.digest_type),
-                steps: steps
-            };
-            Template::render("entry", &display)
+// File viewer
+#[get("/view/<file..>")]
+fn view(file: PathBuf) -> Template {
+    match fs::File::open(Path::new("cache/").join(file)) {
+        Ok(fh) => {
+            match ots::DetachedTimestampFile::from_reader(fh) {
+                Ok(dtf) => {
+                    let mut steps = vec![];
+                    render_steps(&dtf.timestamp.first_step, &mut steps, &dtf.timestamp.start_digest, "".to_string());
+                    let display = DisplayedTimestamp {
+                        title: format!("Timestamp of <tt>{:?}</tt>", Hexed(&dtf.timestamp.start_digest[0..6])),
+                        start_hash: format!("{}", Hexed(&dtf.timestamp.start_digest)),
+                        digest_type: format!("{}", dtf.digest_type),
+                        steps: steps
+                    };
+                    Template::render("entry", &display)
+                }
+                Err(e) => {
+                    let mut context = HashMap::new();
+                    context.insert("title", "View Timestamp".to_owned());
+                    context.insert("error", format!("{}", e));
+                    Template::render("error", &context)
+                }
+            }
         }
         Err(e) => {
             let mut context = HashMap::new();
-            context.insert("title", "Upload Page".to_owned());
+            context.insert("title", "View Timestamp".to_owned());
             context.insert("error", format!("{}", e));
             Template::render("error", &context)
         }
     }
 }
 
+fn doc_id_hash_recurse(step: &Step, hasher: &mut Sha256) {
+    hasher.input(&step.output);
+    for next in step.next.iter() {
+        doc_id_hash_recurse(next, hasher);
+    }
+}
+
+/// Compute a unique filename for this timestamp
+fn doc_id(dtf: &ots::DetachedTimestampFile) -> String {
+    let mut output = [0; 32];
+    let mut hasher = Sha256::new();
+    hasher.input(&dtf.timestamp.start_digest);
+    doc_id_hash_recurse(&dtf.timestamp.first_step, &mut hasher);
+    hasher.result(&mut output);
+    format!("{}", Hexed(&output))
+}
+
+// Upload handler
+#[post("/upload", data="<ots>")]
+fn upload(ots: multipart_stream::MultipartStream) -> Redirect {
+    match ots::DetachedTimestampFile::from_reader(ots.stream) {
+        Ok(dtf) => {
+            let id = doc_id(&dtf);
+            match fs::File::create(Path::new("cache/").join(&id)) {
+                Ok(fh) => {
+                    if let Err(e) = dtf.to_writer(fh) {
+                        println!("Filed to write timestamp: {}", e);
+                        Redirect::to("/")
+                    } else {
+                        Redirect::to(&format!("/view/{}", id))
+                    }
+                }
+                Err(e) => {
+                    println!("Filed to open {}: {}", id, e);
+                    Redirect::to("/")
+                }
+            }
+        }
+        Err(e) => {
+            // TODO somehow meaningfully show the error
+            println!("Filed to parse timestamp: {}", e);
+            Redirect::to("/")
+        }
+    }
+}
+
 // Generic static file handler
-#[get("/<file..>")]
+#[get("/<file..>", rank = 2)]
 fn files(file: PathBuf) -> Option<NamedFile> {
     NamedFile::open(Path::new("static/").join(file)).ok()
 }
@@ -180,7 +240,7 @@ fn index() -> Template {
 
 fn main() {
     rocket::ignite()
-        .mount("/", routes![index, files, upload])
+        .mount("/", routes![index, files, upload, view])
         .launch();
 }
 

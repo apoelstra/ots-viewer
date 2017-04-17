@@ -8,7 +8,8 @@ name = "ots-viewer-server"
 path = "src/main.rs"
 
 [dependencies]
-bitcoin = "0.8"
+bitcoin = "0.9"
+rust-crypto = "0.2"
 multipart = "0.11"
 ots = "0.1"
 rocket = "0.2"
