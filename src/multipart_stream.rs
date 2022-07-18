@@ -28,11 +28,13 @@ const SIZE_LIMIT: u64 = 32768;
 
 /// A wrapper around a multipart stream
 pub struct MultipartStream {
-    pub stream: Box<Read>
+    pub stream: Box<dyn Read>
 }
 
-impl FromData for MultipartStream {
+impl<'a> FromData<'a> for MultipartStream {
     type Error = &'static str;
+    type Owned = &'static str;
+    type Borrowed = &'static str;
 
     fn from_data(request: &Request, data: Data) -> data::Outcome<Self, Self::Error> {
         let ct = match request.headers().get_one("Content-Type") {
