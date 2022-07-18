@@ -273,6 +273,7 @@ fn index() -> Template {
 
 fn main() {
     rocket::ignite()
+        .attach(Template::fairing())
         .mount("/", routes![index, files, upload, download, view])
         .launch();
 }
