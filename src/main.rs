@@ -23,20 +23,17 @@
 #![deny(non_snake_case)]
 #![deny(unused_mut)]
 
-#![feature(plugin)]
-#![plugin(rocket_codegen)]
+#![feature(decl_macro)]
 
 extern crate bitcoin;
 extern crate crypto;
-extern crate multipart;
+extern crate rocket_multipart_form_data;
 extern crate opentimestamps as ots;
 extern crate rocket_contrib;
-extern crate rocket;
-extern crate serde;
-#[macro_use] extern crate serde_derive;
+#[macro_use] extern crate rocket;
+#[macro_use] extern crate serde;
 
 use std::collections::HashMap;
-use std::borrow::Cow;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -44,23 +41,16 @@ use bitcoin::blockdata::transaction::Transaction;
 use bitcoin::network::serialize::{deserialize, BitcoinHash};
 use crypto::digest::Digest;
 use crypto::sha2::Sha256;
+use rocket_multipart_form_data::{MultipartFormDataOptions, MultipartFormData, MultipartFormDataField};
 use ots::attestation::Attestation;
 use ots::timestamp::{Step, StepData};
 use ots::op::Op;
 use ots::hex::Hexed;
-use rocket::http::ascii::UncasedAscii;
+use rocket::Data;
 use rocket::http::ContentType;
 use rocket::response::content;
 use rocket::response::{Redirect, NamedFile};
-use rocket_contrib::Template;
-
-pub mod multipart_stream;
-
-const OCTET_STREAM: ContentType = ContentType {
-    ttype: UncasedAscii { string: Cow::Borrowed("application") },
-    subtype: UncasedAscii { string: Cow::Borrowed("octet-stream") },
-    params: None
-};
+use rocket_contrib::templates::Template;
 
 #[derive(Debug, Serialize)]
 struct DisplayedStep {
@@ -193,8 +183,9 @@ fn view(file: PathBuf) -> Template {
 // Download
 #[get("/download/<file..>")]
 fn download(file: PathBuf) -> Option<content::Content<NamedFile>> {
+    let octet_stream: ContentType = ContentType::new("application", "octet-stream");
     if let Ok(nf) = NamedFile::open(Path::new("cache/").join(file)) {
-        Some(content::Content(OCTET_STREAM, nf))
+        Some(content::Content(octet_stream, nf))
     } else {
         None
     }
@@ -220,8 +211,27 @@ fn doc_id(dtf: &ots::DetachedTimestampFile) -> String {
 
 // Upload handler
 #[post("/upload", data="<ots>")]
-fn upload(ots: multipart_stream::MultipartStream) -> Redirect {
-    match ots::DetachedTimestampFile::from_reader(ots.stream) {
+fn upload(content_type: &ContentType, ots: Data) -> Redirect {
+    let options = MultipartFormDataOptions::with_multipart_form_data_fields(
+        vec![MultipartFormDataField::file("file")]
+    );
+    let multipart_form_data = MultipartFormData::parse(content_type, ots, options).unwrap();
+    let filepath = match multipart_form_data.files.get("file") {
+        Some(ref file) => &file[0].path,
+        None => {
+            println!("No file provided.");
+            return Redirect::to("/");
+        }
+    };
+    let fh = match fs::File::open(filepath) {
+        Ok(fh) => fh,
+        Err(e) => {
+            println!("Failed to open uploaded file: {}", e);
+            return Redirect::to("/");
+        }
+    };
+
+    match ots::DetachedTimestampFile::from_reader(fh) {
         Ok(dtf) => {
             let id = doc_id(&dtf);
             match fs::File::create(Path::new("cache/").join(&id)) {
@@ -230,7 +240,7 @@ fn upload(ots: multipart_stream::MultipartStream) -> Redirect {
                         println!("Filed to write timestamp: {}", e);
                         Redirect::to("/")
                     } else {
-                        Redirect::to(&format!("/view/{}", id))
+                        Redirect::to(format!("/view/{}", id))
                     }
                 }
                 Err(e) => {
